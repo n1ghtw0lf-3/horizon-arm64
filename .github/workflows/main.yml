@@ -1,0 +1,61 @@
+name: Build Horizon ARM64 (Pi 5) - Max Performance
+
+on:
+  workflow_dispatch
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libasound2-dev libudev-dev python3
+
+      - name: Install Rust
+        run: rustup update stable
+
+      - name: Add extra swap (fat LTO needs it)
+        run: |
+          sudo fallocate -l 8G /extra-swap
+          sudo chmod 600 /extra-swap
+          sudo mkswap /extra-swap
+          sudo swapon /extra-swap
+          free -h
+
+      - name: Cache cargo
+        uses: swatinem/rust-cache@v2
+        with:
+          key: horizon-arm64-fatlto-${{ github.sha }}
+
+      - name: Build (max perf)
+        env:
+          RUSTFLAGS: "-C target-cpu=cortex-a76 -C panic=abort -C strip=symbols"
+        run: |
+          cargo build --release \
+            --config 'profile.release.lto="fat"' \
+            --config 'profile.release.codegen-units=1' \
+            --config 'profile.release.opt-level=3' \
+            -p horizon-game --bin horizon-client \
+            -p horizon-prepare --bin horizon-prepare
+
+      - name: Verify & report size
+        run: |
+          echo "=== Binary sizes ==="
+          ls -lh target/release/horizon-client
+          ls -lh target/release/horizon-prepare
+          file target/release/horizon-client
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: horizon-pi5-arm64-fatlto
+          path: |
+            target/release/horizon-client
+            target/release/horizon-prepare
+          retention-days: 7   
