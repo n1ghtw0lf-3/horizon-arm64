@@ -1,0 +1,54 @@
+name: Prepare Horizon resources (26.3)
+
+on:
+  workflow_dispatch
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  prepare:
+    runs-on: ubuntu-22.04-arm
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libasound2-dev libudev-dev python3
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"   # not verified: check research-lock.json / README
+
+      - name: Install Rust
+        run: rustup update stable
+
+      - name: Download Minecraft 26.3 files
+        run: |
+          chmod +x scripts/setup-mc.sh
+          ./scripts/setup-mc.sh
+
+      - name: Build horizon-prepare
+        run: cargo build --release -p horizon-prepare --bin horizon-prepare
+
+      - name: Prepare resources
+        run: |
+          ./target/release/horizon-prepare --prepare --complete \
+            --root . \
+            --minecraft-dir "$HOME/.minecraft" \
+            --server-jar "$HOME/Downloads/server-26.3.jar" \
+            --output ./prepared/26.3
+
+      - name: Check resources
+        run: ./target/release/horizon-prepare --check --root . --output ./prepared/26.3
+
+      - name: Upload prepared folder
+        uses: actions/upload-artifact@v4
+        with:
+          name: horizon-prepared-26.3
+          path: prepared/26.3
+          retention-days: 7
